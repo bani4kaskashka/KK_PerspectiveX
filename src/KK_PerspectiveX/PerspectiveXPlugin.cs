@@ -14,14 +14,15 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.1.0";
-
-        private enum PovSex { Male = 0, Female = 1, Either = 2 }
+        public const string Version = "1.2.1";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CycleNextKey { get; set; }
         private ConfigEntry<KeyboardShortcut> FpsModeKey { get; set; }
+        private ConfigEntry<KeyboardShortcut> RollLeftKey { get; set; }
+        private ConfigEntry<KeyboardShortcut> RollRightKey { get; set; }
+        private ConfigEntry<KeyboardShortcut> RollResetKey { get; set; }
         private ConfigEntry<float> DefaultFov { get; set; }
         private ConfigEntry<float> MouseSensitivity { get; set; }
         private ConfigEntry<float> PositionSmoothing { get; set; }
@@ -31,7 +32,7 @@ namespace PerspectiveX
         private ConfigEntry<float> PitchLimit { get; set; }
         private ConfigEntry<float> NearClip { get; set; }
         private ConfigEntry<bool> HideHead { get; set; }
-        private ConfigEntry<PovSex> PreferredSex { get; set; }
+        private ConfigEntry<bool> AlignWithBody { get; set; }
 
         private readonly bool isStudio = Paths.ProcessName == "CharaStudio";
 
@@ -54,6 +55,9 @@ namespace PerspectiveX
         private float yaw;
         private float pitch;
         private float fov;
+        private float manualRoll;
+        private float bodyRoll;
+        private bool bodyRollInit;
         private bool dragging;
         private bool fpsMode;
         private Vector3 smoothPos;
@@ -70,8 +74,14 @@ namespace PerspectiveX
                 "Switch the POV to the next character while POV is active.");
             FpsModeKey = Config.Bind("Keyboard shortcuts", "Toggle FPS mouse look", new KeyboardShortcut(KeyCode.L, KeyCode.LeftControl),
                 "Optional hands-free mode: locks and hides the cursor so the mouse looks around directly, like an FPS. Press again to get the cursor back. The normal mode is dragging with the left mouse button.");
+            RollLeftKey = Config.Bind("Keyboard shortcuts", "Roll camera left", new KeyboardShortcut(KeyCode.Comma),
+                "Hold to tilt the camera counterclockwise.");
+            RollRightKey = Config.Bind("Keyboard shortcuts", "Roll camera right", new KeyboardShortcut(KeyCode.Period),
+                "Hold to tilt the camera clockwise.");
+            RollResetKey = Config.Bind("Keyboard shortcuts", "Reset camera roll", new KeyboardShortcut(KeyCode.Slash),
+                "Reset the manual camera tilt back to level.");
             DefaultFov = Config.Bind("General", "Field of view", 60f,
-                new ConfigDescription("Vertical FOV used when entering POV. Adjust live with the scroll wheel while looking around.", new AcceptableValueRange<float>(20f, 120f)));
+                new ConfigDescription("Vertical FOV. Can also be adjusted with the scroll wheel while in POV.", new AcceptableValueRange<float>(20f, 120f)));
             MouseSensitivity = Config.Bind("General", "Mouse sensitivity", 1f,
                 new ConfigDescription("", new AcceptableValueRange<float>(0.1f, 5f)));
             PositionSmoothing = Config.Bind("Comfort", "Position smoothing", 0.65f,
@@ -88,8 +98,16 @@ namespace PerspectiveX
                 new ConfigDescription("Lower values let very close geometry render without being cut off.", new AcceptableValueRange<float>(0.01f, 0.1f)));
             HideHead = Config.Bind("General", "Hide character head", true,
                 "Hide the POV character's head (incl. hair and head accessories) so nothing clips into the view.");
-            PreferredSex = Config.Bind("General", "POV character", PovSex.Male,
-                "Which character to prefer when entering POV outside of Studio. Cycling with the hotkeys ignores this and goes through everyone.");
+            AlignWithBody = Config.Bind("Comfort", "Align camera with body", false,
+                "Tilt the camera to follow the character's body orientation, so the view isn't kept artificially level when they're lying on their side or leaning. Fine-tune with the roll keys.");
+
+            // apply settings that are only sampled on POV enter live as well
+            DefaultFov.SettingChanged += (s, e) => fov = DefaultFov.Value;
+            HideHead.SettingChanged += (s, e) =>
+            {
+                if (povEnabled && chara)
+                    chara.fileStatus.visibleHeadAlways = !HideHead.Value && origVisibleHeadAlways;
+            };
 
             SceneManager.sceneLoaded += (scene, mode) =>
             {
@@ -162,14 +180,36 @@ namespace PerspectiveX
 
             if (fpsMode || dragging)
             {
-                yaw += Input.GetAxis("Mouse X") * MouseSensitivity.Value;
+                float dx = Input.GetAxis("Mouse X") * MouseSensitivity.Value;
+                float dy = -Input.GetAxis("Mouse Y") * MouseSensitivity.Value;
+
+                // rotate the mouse delta by the current camera roll so the controls
+                // stay screen-relative when the view is tilted
+                float rollRad = (manualRoll + (AlignWithBody.Value ? bodyRoll : 0f)) * Mathf.Deg2Rad;
+                float rollCos = Mathf.Cos(rollRad);
+                float rollSin = Mathf.Sin(rollRad);
+
+                yaw += dx * rollCos + dy * rollSin;
                 if (yaw > 180f) yaw -= 360f;
                 else if (yaw < -180f) yaw += 360f;
-                pitch = Mathf.Clamp(pitch - Input.GetAxis("Mouse Y") * MouseSensitivity.Value, -PitchLimit.Value, PitchLimit.Value);
+                pitch = Mathf.Clamp(pitch + dy * rollCos - dx * rollSin, -PitchLimit.Value, PitchLimit.Value);
+            }
 
-                float scroll = Input.GetAxis("Mouse ScrollWheel");
-                if (scroll != 0f)
-                    fov = Mathf.Clamp(fov - scroll * 15f, 20f, 120f);
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (scroll != 0f && (fpsMode || dragging || !IsPointerOverUI()))
+                fov = Mathf.Clamp(fov - scroll * 15f, 20f, 120f);
+
+            bool rollLeft = RollLeftKey.Value.IsPressed();
+            bool rollRight = RollRightKey.Value.IsPressed();
+            if (RollResetKey.Value.IsDown())
+            {
+                manualRoll = 0f;
+            }
+            else if (rollLeft != rollRight)
+            {
+                manualRoll += (rollLeft ? 1f : -1f) * 60f * Time.deltaTime;
+                if (manualRoll > 180f) manualRoll -= 360f;
+                else if (manualRoll < -180f) manualRoll += 360f;
             }
         }
 
@@ -203,7 +243,38 @@ namespace PerspectiveX
                 smoothPos = Vector3.Lerp(smoothPos, targetPos, 1f - Mathf.Exp(-followSpeed * dt));
             }
 
-            Quaternion finalRot = Quaternion.Euler(pitch, yaw, 0f);
+            float roll = manualRoll;
+            if (AlignWithBody.Value)
+            {
+                // roll of the head bone around its own forward axis, smoothed so
+                // animation wobble doesn't rock the view; degenerates when the head
+                // points straight up/down, so keep the last known roll there
+                Vector3 headFwd2 = headRot * Vector3.forward;
+                if (Mathf.Abs(headFwd2.y) < 0.99f)
+                {
+                    Vector3 levelUp = Vector3.ProjectOnPlane(Vector3.up, headFwd2).normalized;
+                    Vector3 headUp = Vector3.ProjectOnPlane(headRot * Vector3.up, headFwd2).normalized;
+                    // Vector3.SignedAngle doesn't exist in this Unity version
+                    float targetRoll = Mathf.Atan2(Vector3.Dot(Vector3.Cross(levelUp, headUp), headFwd2),
+                        Vector3.Dot(levelUp, headUp)) * Mathf.Rad2Deg;
+                    if (!bodyRollInit)
+                    {
+                        bodyRoll = targetRoll;
+                        bodyRollInit = true;
+                    }
+                    else
+                    {
+                        bodyRoll = Mathf.LerpAngle(bodyRoll, targetRoll, 1f - Mathf.Exp(-3f * dt));
+                    }
+                }
+                roll += bodyRoll;
+            }
+            else
+            {
+                bodyRollInit = false;
+            }
+
+            Quaternion finalRot = Quaternion.Euler(pitch, yaw, roll);
 
             float sway = HeadSway.Value;
             if (sway > 0f)
@@ -295,6 +366,7 @@ namespace PerspectiveX
                 chara.fileStatus.visibleHeadAlways = false;
 
             InitViewFromHead();
+            manualRoll = 0f;
             dragging = false;
             fpsMode = false;
             povEnabled = true;
@@ -349,8 +421,7 @@ namespace PerspectiveX
                 ChaControl c = charaList[i];
                 if (c == chara)
                     continue;
-                // cycling deliberately ignores the sex preference so you can reach everyone
-                if (!IsValidPovTarget(c, ignoreSexPreference: true))
+                if (!IsValidPovTarget(c))
                     continue;
                 SwitchTo(c);
                 return;
@@ -379,6 +450,7 @@ namespace PerspectiveX
             }
             smoothPosInit = false;
             swayInit = false;
+            bodyRollInit = false;
         }
 
         private void RebuildCharaList()
@@ -386,11 +458,9 @@ namespace PerspectiveX
             charaList = FindObjectsOfType<ChaControl>().Where(c => c).ToList();
         }
 
-        private bool IsValidPovTarget(ChaControl c, bool ignoreSexPreference)
+        private bool IsValidPovTarget(ChaControl c)
         {
             if (!c || !c.objTop || !c.objTop.activeInHierarchy)
-                return false;
-            if (!ignoreSexPreference && PreferredSex.Value != PovSex.Either && c.sex != (int)PreferredSex.Value)
                 return false;
             // in these H modes the male is not posed, entering his POV makes no sense
             if (c.sex == 0 && hFlag &&
@@ -412,10 +482,7 @@ namespace PerspectiveX
             }
 
             RebuildCharaList();
-            ChaControl c = charaList.FirstOrDefault(x => IsValidPovTarget(x, ignoreSexPreference: false));
-            if (!c)
-                c = charaList.FirstOrDefault(x => IsValidPovTarget(x, ignoreSexPreference: true));
-            return c;
+            return charaList.FirstOrDefault(IsValidPovTarget);
         }
 
         private static void SetCursorLock(bool locked)

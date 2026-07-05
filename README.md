@@ -44,9 +44,10 @@ All rebindable via ConfigurationManager (F1).
 - **Left mouse (hold + drag)**: look around. The cursor stays visible and usable otherwise.
 - **Ctrl+L**: hands-free FPS mouse look. The cursor is captured until you press it again.
 - **Ctrl+Shift+Left / Ctrl+Shift+Right**: switch the POV to the previous/next character.
-- **Scroll wheel**: adjust FOV while looking around.
+- **Scroll wheel**: adjust FOV while in POV.
+- **Comma / Period**: tilt the camera left/right. **Slash** resets the tilt to level.
 
-Comfort settings (position smoothing, animation sway, FOV, offsets) are in the plugin settings, adjustable live while in POV.
+Comfort settings (position smoothing, animation sway, FOV, offsets) are in the plugin settings, adjustable live while in POV. An optional "Align camera with body" setting tilts the view to match the character's body orientation, for example when they're lying on their side, instead of keeping the horizon level.
 
 ## Building from source
 
@@ -64,6 +65,11 @@ dotnet build -c Release
 ```
 
 Output: `src/KK_PerspectiveX/bin/Release/KK_PerspectiveX.dll`
+
+## My links
+
+- [Patreon](https://www.patreon.com/c/zamalkogts)
+- [DeviantArt](https://www.deviantart.com/zamalkogts)
 
 ## License
 
