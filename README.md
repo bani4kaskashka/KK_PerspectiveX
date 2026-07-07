@@ -4,6 +4,8 @@ A first-person POV plugin for Koikatsu that doesn't clip through the body and do
 
 Works in the main game (free roam), H scenes, and CharaStudio.
 
+Supports both Koikatsu and Koikatsu Sunshine - the same DLL works for both games. I've tested it thoroughly on Sunshine and it behaves identically to the original Koikatsu in its current state, though as a newer/less common target for POV mods, expect the occasional Sunshine-specific bug. If the two games diverge more in the future I may need to split the plugin, but for now one DLL covers both just fine.
+
 ## Demo
 
 <!-- Screenshot/GIF: commit the file (e.g. under images/) and reference it below. -->
