@@ -14,7 +14,7 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.2.1";
+        public const string Version = "1.2.2";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }
@@ -51,6 +51,8 @@ namespace PerspectiveX
         private float origFov;
         private float origNearClip;
         private bool origVisibleHeadAlways;
+        private bool origHeadActive;
+        private bool[] origHairActive;
 
         private float yaw;
         private float pitch;
@@ -106,7 +108,7 @@ namespace PerspectiveX
             HideHead.SettingChanged += (s, e) =>
             {
                 if (povEnabled && chara)
-                    chara.fileStatus.visibleHeadAlways = !HideHead.Value && origVisibleHeadAlways;
+                    RestoreHeadVisibility(chara, !HideHead.Value && origVisibleHeadAlways);
             };
 
             SceneManager.sceneLoaded += (scene, mode) =>
@@ -361,9 +363,7 @@ namespace PerspectiveX
             if (fov <= 0f)
                 fov = DefaultFov.Value;
 
-            origVisibleHeadAlways = chara.fileStatus.visibleHeadAlways;
-            if (HideHead.Value)
-                chara.fileStatus.visibleHeadAlways = false;
+            CaptureAndHideHead();
 
             InitViewFromHead();
             manualRoll = 0f;
@@ -376,8 +376,7 @@ namespace PerspectiveX
         {
             povEnabled = false;
 
-            if (chara)
-                chara.fileStatus.visibleHeadAlways = origVisibleHeadAlways;
+            RestoreHeadVisibility(chara, origVisibleHeadAlways);
             chara = null;
 
             if (cam)
@@ -430,14 +429,49 @@ namespace PerspectiveX
 
         private void SwitchTo(ChaControl next)
         {
-            if (chara)
-                chara.fileStatus.visibleHeadAlways = origVisibleHeadAlways;
+            RestoreHeadVisibility(chara, origVisibleHeadAlways);
 
             chara = next;
+            CaptureAndHideHead();
+            InitViewFromHead();
+        }
+
+        private void CaptureAndHideHead()
+        {
             origVisibleHeadAlways = chara.fileStatus.visibleHeadAlways;
+            origHeadActive = chara.objHead && chara.objHead.activeSelf;
+            GameObject[] hair = chara.objHair;
+            origHairActive = hair == null ? null : hair.Select(h => h && h.activeSelf).ToArray();
             if (HideHead.Value)
                 chara.fileStatus.visibleHeadAlways = false;
-            InitViewFromHead();
+        }
+
+        private void RestoreHeadVisibility(ChaControl c, bool visible)
+        {
+            if (!c)
+                return;
+            c.fileStatus.visibleHeadAlways = visible;
+            if (!visible)
+                return;
+            try
+            {
+                // KK re-applies visibleHeadAlways every frame in LateUpdateForce/UpdateVisible,
+                // but KKS doesn't re-show the head from the flag alone — force one refresh,
+                // then reactivate whatever was active on POV enter and is still left inactive.
+                c.LateUpdateForce();
+                if (origHeadActive && c.objHead && !c.objHead.activeSelf)
+                    c.objHead.SetActive(true);
+                GameObject[] hair = c.objHair;
+                if (hair != null && origHairActive != null)
+                    for (int i = 0; i < hair.Length && i < origHairActive.Length; i++)
+                        if (origHairActive[i] && hair[i] && !hair[i].activeSelf)
+                            hair[i].SetActive(true);
+            }
+            catch
+            {
+                // KKS API drift must never break POV exit; the flag restore above already
+                // covers KK.
+            }
         }
 
         private void InitViewFromHead()
