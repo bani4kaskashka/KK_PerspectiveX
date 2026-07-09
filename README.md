@@ -26,7 +26,7 @@ Existing POV plugins have two problems. Some place the camera at the wrong spot,
 | **Posing while in POV** | Moving bones (e.g. with KKPE) doesn't spin your view - rotation is entirely yours | Bone edits up the chain can still tilt the camera, since rotation isn't fully decoupled | Bone edits move the camera immediately, since it reads the bone's rotation live |
 | **Head hiding** | Uses the game's own auto-hide flag, the same one it uses when the camera gets close on its own - no side effects | Same flag (optional) | Deactivates the whole head object; since Unity stops animating deactivated bones, the eye position can freeze while the body keeps moving, letting the camera drift and clip into the body |
 | **Mouse look limits** | Clean yaw/pitch, no wraparound | Unclamped rotation accumulation | Unclamped rotation accumulation - enough drag can flip the view upside down |
-| **Comfort options** | Position smoothing, animation-sway blend, forward/up offsets, live FOV, all adjustable mid-POV | FOV, sensitivity, fixed offset | FOV, sensitivity |
+| **Comfort options** | Position smoothing, animation-sway blend, forward/up offsets, live FOV, one-click presets, saveable view slots, camera lock - all adjustable mid-POV | FOV, sensitivity, fixed offset | FOV, sensitivity |
 
 (Based on reading the public source of [RealPOV](https://github.com/Keelhauled/KeelPlugins) and [KK_StudioPOV](https://github.com/Mantas-2155X/StudioPOV) - describing what the code does, not a knock on either project.)
 
@@ -46,10 +46,21 @@ All rebindable via ConfigurationManager (F1).
 - **Left mouse (hold + drag)**: look around. The cursor stays visible and usable otherwise.
 - **Ctrl+L**: hands-free FPS mouse look. The cursor is captured until you press it again.
 - **Ctrl+Shift+Left / Ctrl+Shift+Right**: switch the POV to the previous/next character.
-- **Scroll wheel**: adjust FOV while in POV.
+- **Scroll wheel**: adjust FOV while in POV (can be turned off in the settings if you keep hitting it by accident).
 - **Comma / Period**: tilt the camera left/right. **Slash** resets the tilt to level.
+- **Semicolon**: lock the camera in place. The view stops following the head, which is handy during caress animations that toss it around; looking around still works. Press again to unlock and the camera glides back.
+- **Ctrl+Shift+1/2/3**: save the current view (FOV, look direction, tilt, camera offsets) into a slot. **Ctrl+1/2/3**: recall it. Slots are remembered between game sessions.
+- **Ctrl+P**: open the presets panel. In Studio you can also click the PerspectiveX eye button in the bottom-left toolbar.
 
-Comfort settings (position smoothing, animation sway, FOV, offsets) are in the plugin settings, adjustable live while in POV. An optional "Align camera with body" setting tilts the view to match the character's body orientation, for example when they're lying on their side, instead of keeping the horizon level.
+### Presets panel
+
+The in-game panel collects everything preset-related in one place, no config diving needed:
+
+- **View presets**: one-click setups (Cozy 60 / Natural 90 / Action 110) that set FOV, position smoothing and camera offset together.
+- **Custom presets**: dial in your favorite FOV/smoothing/offset combo, type a name, and save it as your own one-click preset (up to 5).
+- **Saved views**: the same three save/recall slots as the hotkeys, as buttons, with each slot's FOV shown.
+
+Comfort settings (position smoothing, animation sway, FOV, offsets) are in the plugin settings, adjustable live while in POV. The view presets are available there too. An optional "Align camera with body" setting tilts the view to match the character's body orientation, for example when they're lying on their side, instead of keeping the horizon level.
 
 ## Building from source
 
