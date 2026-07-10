@@ -6,14 +6,7 @@ Works in the main game (free roam), H scenes, and CharaStudio.
 
 Supports both Koikatsu and Koikatsu Sunshine - the same DLL works for both games. I've tested it thoroughly on Sunshine and it behaves identically to the original Koikatsu in its current state, though as a newer/less common target for POV mods, expect the occasional Sunshine-specific bug. If the two games diverge more in the future I may need to split the plugin, but for now one DLL covers both just fine.
 
-## Demo
-
-<!-- Screenshot/GIF: commit the file (e.g. under images/) and reference it below. -->
-<!-- ![PerspectiveX in action](images/demo.gif) -->
-
-<!-- Video: drag & drop the .mp4 into a GitHub issue/PR/discussion comment box to get an
-     upload URL (https://github.com/user-attachments/assets/...), then paste that URL
-     on its own line below - GitHub renders it as a native video player. -->
+A Traditional Chinese (ZH-TW) translation fork is available, maintained by Tokozakura: [releases](https://github.com/Tokozakura/KK_PerspectiveX_ZH-TW/releases).
 
 ## Why another POV mod?
 
@@ -36,7 +29,7 @@ Existing POV plugins have two problems. Some place the camera at the wrong spot,
 2. Download `KK_PerspectiveX.dll` from [Releases](../../releases) and drop it into `BepInEx/plugins/`.
 3. If you have RealPOV installed (I think HF Patch includes it), disable it by renaming `RealPOV.Koikatu.dll` to `RealPOV.Koikatu.dll.disabled`, since both plugins use Backspace as the toggle key.
 
-Tested and played on Koikatsu + After School with BepInEx 5. If it doesn't work on your setup, please [open an issue](../../issues) and I'll take a look.
+Tested and played on KK and KKS with BepInEx 5+. If it doesn't work on your setup, please [open an issue](../../issues) and I'll take a look.
 
 ## Controls
 
