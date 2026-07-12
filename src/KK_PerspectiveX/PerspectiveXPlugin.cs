@@ -18,7 +18,7 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.3.1";
+        public const string Version = "1.3.2";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }

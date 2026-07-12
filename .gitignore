@@ -1,6 +1,7 @@
 # Build output
 bin/
 obj/
+dist/
 
 # Game reference DLLs — copyrighted, copy them from your own install (see README)
 lib/
