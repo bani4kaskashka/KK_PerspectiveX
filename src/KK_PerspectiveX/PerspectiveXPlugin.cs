@@ -13,6 +13,7 @@ using UnityStandardAssets.ImageEffects;
 namespace PerspectiveX
 {
     [BepInPlugin(GUID, PluginName, Version)]
+    [BepInIncompatibility("keelhauled.realpov")]
     public class PerspectiveXPlugin : BaseUnityPlugin
     {
         public const string GUID = "bucky.kk.perspectivex";
