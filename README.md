@@ -4,13 +4,15 @@ A first-person POV plugin for Koikatsu that doesn't clip through the body and do
 
 Works in the main game (free roam), H scenes, and CharaStudio.
 
-Supports both Koikatsu and Koikatsu Sunshine - the same DLL works for both games. I've tested it thoroughly on Sunshine and it behaves identically to the original Koikatsu in its current state, though as a newer/less common target for POV mods, expect the occasional Sunshine-specific bug. If the two games diverge more in the future I may need to split the plugin, but for now one DLL covers both just fine.
+![In POV](img/pov.jpg)
+
+Supports both Koikatsu and Koikatsu Sunshine with the same DLL. I've played it plenty on both and they behave the same, though Sunshine is the newer and less common target for POV mods, so the occasional Sunshine-specific bug can slip through. If the two games ever diverge enough I'll split the plugin, but for now one DLL covers both just fine.
 
 A Traditional Chinese (ZH-TW) translation fork is available, maintained by Tokozakura: [releases](https://github.com/Tokozakura/KK_PerspectiveX_ZH-TW/releases).
 
 ## Why another POV mod?
 
-Existing POV plugins have two problems. Some place the camera at the wrong spot, giving you a chest-level view with the head clipping into the screen. RealPOV places it correctly but copies the head bone's full animation rotation, including roll, so the view tilts sideways and jerks around with every animation. PerspectiveX handles position and rotation separately:
+Because the existing ones kept annoying me. Some place the camera at the wrong spot, so you get a chest-level view with the head clipping into the screen. RealPOV places it correctly but copies the head bone's full animation rotation, roll included, so the view tilts sideways and jerks around with every animation. PerspectiveX handles position and rotation separately:
 
 | | PerspectiveX | RealPOV | KK_StudioPOV (Studio-only) |
 |---|---|---|---|
@@ -33,7 +35,7 @@ Tested and played on KK and KKS with BepInEx 5+. If it doesn't work on your setu
 
 ## Controls
 
-All rebindable via ConfigurationManager (F1).
+Everything is rebindable via ConfigurationManager (F1).
 
 - **Backspace**: toggle POV. In Studio, select a character in the workspace first.
 - **Left mouse (hold + drag)**: look around. The cursor stays visible and usable otherwise.
@@ -71,6 +73,12 @@ dotnet build -c Release
 ```
 
 Output: `src/KK_PerspectiveX/bin/Release/KK_PerspectiveX.dll`
+
+## The XMods
+
+- [KK_PerspectiveX](https://github.com/bani4kaskashka/KK_PerspectiveX): first-person POV that doesn't clip through the body and doesn't make you dizzy (this one)
+- [StudioHeightX](https://github.com/bani4kaskashka/KK-KKS-StudioHeightX): live height readout for the selected Studio character
+- [PerceptiveHeightX](https://github.com/bani4kaskashka/PerceptiveHeightX): POV size-perception add-on for PerspectiveX
 
 ## My links
 
