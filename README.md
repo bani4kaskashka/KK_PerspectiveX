@@ -80,6 +80,10 @@ Output: `src/KK_PerspectiveX/bin/Release/KK_PerspectiveX.dll`
 - [StudioHeightX](https://github.com/bani4kaskashka/KK-KKS-StudioHeightX): live height readout for the selected Studio character
 - [PerceptiveHeightX](https://github.com/bani4kaskashka/PerceptiveHeightX): POV size-perception add-on for PerspectiveX
 
+## Credits
+
+Better VR support provided by [HanYuanyi](https://github.com/HanYuanyi).
+
 ## My links
 
 - [Patreon](https://www.patreon.com/c/zamalkogts)
