@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build:
+      export DOTNET_ROOT="<workspace>/05_toolchain/dotnet"
+      dotnet build -c Release -p:GameDir="I:/Koikatu"
+
+    The original project referenced lib/*.dll from the author's repo;
+    here the references point straight at the game install instead.
+  -->
+  <PropertyGroup>
+    <GameDir Condition="'$(GameDir)' == ''">I:/Koikatu</GameDir>
+
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KK_PerspectiveX</AssemblyName>
+    <RootNamespace>PerspectiveX</RootNamespace>
+    <Version>1.4.1</Version>
+    <LangVersion>9</LangVersion>
+    <DebugType>none</DebugType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(GameDir)\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameDir)\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(GameDir)\CharaStudio_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>$(GameDir)\CharaStudio_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(GameDir)\CharaStudio_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(GameDir)\CharaStudio_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Emit an identical KKS_-prefixed copy so KK and KKS get separate,
+       clearly-labelled files (Illusion filename convention). The DLL is
+       byte-for-byte the same; BepInEx loads by plugin GUID, not filename. -->
+  <Target Name="EmitKksCopy" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)KK_PerspectiveX.dll"
+          DestinationFiles="$(OutputPath)KKS_PerspectiveX.dll" />
+  </Target>
+
+</Project>
