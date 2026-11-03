@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Game reference DLLs — copyrighted, copy them from your own install (see README)
+lib/
+
+# Decompiled third-party code, local design reference only
+reference/
+
+# Local-only helpers and notes
+deploy.sh
+CLAUDE.md
+.claude/
+
+# IDE / OS noise
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.DS_Store

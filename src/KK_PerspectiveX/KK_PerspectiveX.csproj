@@ -1,16 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
-    Build:
-      export DOTNET_ROOT="<workspace>/05_toolchain/dotnet"
-      dotnet build -c Release -p:GameDir="I:/Koikatu"
-
-    The original project referenced lib/*.dll from the author's repo;
-    here the references point straight at the game install instead.
-  -->
   <PropertyGroup>
-    <GameDir Condition="'$(GameDir)' == ''">I:/Koikatu</GameDir>
-
     <TargetFramework>net35</TargetFramework>
     <AssemblyName>KK_PerspectiveX</AssemblyName>
     <RootNamespace>PerspectiveX</RootNamespace>
@@ -28,27 +18,27 @@
 
   <ItemGroup>
     <Reference Include="BepInEx">
-      <HintPath>$(GameDir)\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>../../lib/BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>$(GameDir)\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>../../lib/0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(GameDir)\CharaStudio_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <HintPath>../../lib/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>$(GameDir)\CharaStudio_Data\Managed\Assembly-CSharp-firstpass.dll</HintPath>
+      <HintPath>../../lib/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>$(GameDir)\CharaStudio_Data\Managed\UnityEngine.dll</HintPath>
+      <HintPath>../../lib/UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.UI">
-      <HintPath>$(GameDir)\CharaStudio_Data\Managed\UnityEngine.UI.dll</HintPath>
+      <HintPath>../../lib/UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

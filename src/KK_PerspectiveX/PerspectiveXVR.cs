@@ -343,6 +343,8 @@ namespace PerspectiveX
                 ChaControl c = charaList[i];
                 if (!IsValidPovTarget(c) || !c.objHeadBone)
                     continue;
+                // the middle of the head, a bit behind the eyes, so leaning in close to a face
+                // (kissing) doesn't count, only actually being inside the head does
                 Transform headT = c.objHeadBone.transform;
                 Vector3 center = GetEyeMidpoint(c, headT) - headT.forward * 0.06f;
                 if ((center - headset).sqrMagnitude < VrEnterRadius * VrEnterRadius)
@@ -402,23 +404,7 @@ namespace PerspectiveX
                 RebuildCharaList();
             }
 
-            ChaControl inside = null;
-            Vector3 headset = vrHead.position;
-            for (int i = 0; i < charaList.Count; i++)
-            {
-                ChaControl c = charaList[i];
-                if (!IsValidPovTarget(c) || !c.objHeadBone)
-                    continue;
-                // the middle of the head, a bit behind the eyes, so leaning in close to a face
-                // (kissing) doesn't count, only actually being inside the head does
-                Transform headT = c.objHeadBone.transform;
-                Vector3 center = GetEyeMidpoint(c, headT) - headT.forward * 0.06f;
-                if ((center - headset).sqrMagnitude < VrEnterRadius * VrEnterRadius)
-                {
-                    inside = c;
-                    break;
-                }
-            }
+            ChaControl inside = FindHeadContaining();
 
             // Right after leaving POV the headset is often still inside the character's head
             // (especially when POV was entered by dragging the world), so without this the mod
@@ -454,6 +440,11 @@ namespace PerspectiveX
             vrLeftHead = false;
             vrLastFrame = -1;
             vrEnterCandidate = null;
+            vrSwitchCandidate = null;
+            // start the rig-move check fresh, the last session's numbers mean nothing now
+            vrAppliedValid = false;
+            vrDriftMove = 0f;
+            vrDriftTurn = 0f;
             ResetVrFollow();
         }
 

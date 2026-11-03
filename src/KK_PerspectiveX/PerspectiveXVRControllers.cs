@@ -154,9 +154,11 @@ namespace PerspectiveX
         private VrPad vrPad;
 
         private bool appFocused = true;
-        // keys pressed from a controller while the game window isn't focused, see SendMappedKey
+        // keys pressed from a controller, see SendMappedKey
         private readonly HashSet<KeyCode> virtualHeldKeys = new HashSet<KeyCode>();
         private readonly HashSet<KeyCode> virtualDownKeys = new HashSet<KeyCode>();
+        // when each key was last sent through Windows, see IsShortcutDown
+        private readonly Dictionary<KeyCode, float> injectedKeyTimes = new Dictionary<KeyCode, float>();
 
         private void BindVrControllerSettings()
         {
@@ -383,6 +385,8 @@ namespace PerspectiveX
             {
                 uint flags = (down ? 0u : KeyUp) | (extended ? KeyExtended : 0u);
                 keybd_event(vk, (byte)MapVirtualKey(vk, 0), flags, UIntPtr.Zero);
+                if (down)
+                    injectedKeyTimes[code] = Time.unscaledTime;
             }
             // Register the virtual key whether or not we injected (this is what 1.3.5 did).
             // The injection happens inside our own Update, so Unity's input snapshot for this
@@ -403,7 +407,12 @@ namespace PerspectiveX
         private bool IsShortcutDown(KeyboardShortcut shortcut)
         {
             if (shortcut.IsDown())
-                return true;
+            {
+                // if Unity does pick up a key we sent through Windows it shows up a frame or two
+                // later, and the virtual press already counted it, so don't fire twice (toggling
+                // POV on and straight back off)
+                return !injectedKeyTimes.TryGetValue(shortcut.MainKey, out float sentAt) || Time.unscaledTime - sentAt > 0.25f;
+            }
             if (virtualDownKeys.Count == 0 || !virtualDownKeys.Contains(shortcut.MainKey))
                 return false;
             foreach (KeyCode m in shortcut.Modifiers)
