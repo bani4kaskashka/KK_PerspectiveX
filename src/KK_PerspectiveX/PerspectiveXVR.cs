@@ -66,6 +66,20 @@ namespace PerspectiveX
         private Quaternion vrOrigRot;
         private int vrLastFrame = -1;
 
+        // Rig position/rotation we wrote last frame; used to detect the VR mod moving the
+        // rig itself (world grab / locomotion / turning).
+        private Vector3 vrAppliedPos;
+        private Quaternion vrAppliedRot = Quaternion.identity;
+        private bool vrAppliedValid;
+        private float vrDriftMove;
+        private float vrDriftTurn;
+        // Just left POV: the headset has to actually leave the head before POV can be
+        // entered again, otherwise the player gets trapped in an exit/re-enter loop.
+        private bool vrEntryLatch;
+        // While in POV, dragging into another character's head switches to them.
+        private ChaControl vrSwitchCandidate;
+        private float vrSwitchSince;
+
         private ChaControl vrEntryTarget;
         private ChaControl vrEnterCandidate;
         private float vrEnterSince;
@@ -318,6 +332,63 @@ namespace PerspectiveX
             }
         }
 
+        // Returns the character whose head currently contains the headset, or null.
+        private ChaControl FindHeadContaining()
+        {
+            if (!vrHead || charaList == null)
+                return null;
+            Vector3 headset = vrHead.position;
+            for (int i = 0; i < charaList.Count; i++)
+            {
+                ChaControl c = charaList[i];
+                if (!IsValidPovTarget(c) || !c.objHeadBone)
+                    continue;
+                // the middle of the head, a bit behind the eyes, so leaning in close to a face
+                // (kissing) doesn't count, only actually being inside the head does
+                Transform headT = c.objHeadBone.transform;
+                Vector3 center = GetEyeMidpoint(c, headT) - headT.forward * 0.06f;
+                if ((center - headset).sqrMagnitude < VrEnterRadius * VrEnterRadius)
+                    return c;
+            }
+            return null;
+        }
+
+        // While already in POV, dragging the world so the headset enters another character's
+        // head switches to that character. This used to run only while NOT in POV, so dragging
+        // into a second character hid its head but kept tracking the first one.
+        private void UpdateVrPovSwitch()
+        {
+            if (!IsVrEnabled() || !VrHeadEntry.Value || !FindVrRig(false) || IsVrModPovActive())
+            {
+                vrSwitchCandidate = null;
+                return;
+            }
+            if (charaList == null || Time.unscaledTime >= nextVrCharaScan)
+            {
+                nextVrCharaScan = Time.unscaledTime + 1f;
+                RebuildCharaList();
+            }
+
+            ChaControl inside = FindHeadContaining();
+            if (!inside || inside == chara)
+            {
+                vrSwitchCandidate = null;
+                return;
+            }
+            if (inside != vrSwitchCandidate)
+            {
+                vrSwitchCandidate = inside;
+                vrSwitchSince = Time.unscaledTime;
+                return;
+            }
+            if (Time.unscaledTime - vrSwitchSince < VrEnterDwell)
+                return;
+
+            vrSwitchCandidate = null;
+            SwitchTo(inside);
+            RecordVrFollowBase();   // re-base the follow pivot on the new character's head
+        }
+
         // Head entry: while not in POV, watch for the headset sitting inside a character's head.
         private void UpdateVrHeadEntry()
         {
@@ -333,22 +404,17 @@ namespace PerspectiveX
                 RebuildCharaList();
             }
 
-            ChaControl inside = null;
-            Vector3 headset = vrHead.position;
-            for (int i = 0; i < charaList.Count; i++)
+            ChaControl inside = FindHeadContaining();
+
+            // Right after leaving POV the headset is often still inside the character's head
+            // (especially when POV was entered by dragging the world), so without this the mod
+            // would re-enter 0.15 s later and the player could not get out.
+            if (vrEntryLatch)
             {
-                ChaControl c = charaList[i];
-                if (!IsValidPovTarget(c) || !c.objHeadBone)
-                    continue;
-                // the middle of the head, a bit behind the eyes, so leaning in close to a face
-                // (kissing) doesn't count, only actually being inside the head does
-                Transform headT = c.objHeadBone.transform;
-                Vector3 center = GetEyeMidpoint(c, headT) - headT.forward * 0.06f;
-                if ((center - headset).sqrMagnitude < VrEnterRadius * VrEnterRadius)
-                {
-                    inside = c;
-                    break;
-                }
+                vrEnterCandidate = null;
+                if (inside == null)
+                    vrEntryLatch = false;
+                return;
             }
 
             if (inside != vrEnterCandidate)
@@ -374,6 +440,11 @@ namespace PerspectiveX
             vrLeftHead = false;
             vrLastFrame = -1;
             vrEnterCandidate = null;
+            vrSwitchCandidate = null;
+            // start the rig-move check fresh, the last session's numbers mean nothing now
+            vrAppliedValid = false;
+            vrDriftMove = 0f;
+            vrDriftTurn = 0f;
             ResetVrFollow();
         }
 
@@ -491,6 +562,8 @@ namespace PerspectiveX
 
         private void PlaceVrRig()
         {
+            DetectExternalRigMove();
+
             if (vrAlignPending)
             {
                 // turn the rig around the headset so you face where the character's head faces
@@ -536,6 +609,36 @@ namespace PerspectiveX
             vrPrevTarget = smoothPos;
             if (VrNearClip.Value > 0f)
                 vrCam.nearClipPlane = VrNearClip.Value;
+
+            // Remember where we put the rig this frame, so the next frame can tell if
+            // something else moved it.
+            vrAppliedPos = vrOrigin.position;
+            vrAppliedRot = vrOrigin.rotation;
+            vrAppliedValid = true;
+        }
+
+        // The VR mod's world grab / locomotion / turning moves the rig directly, bypassing us.
+        // Once the player has moved it that way, leaving POV should return to where they moved
+        // to, not to where they were before entering.
+        private void DetectExternalRigMove()
+        {
+            if (!vrAppliedValid || !vrOrigin)
+                return;
+
+            float moved = Vector3.Distance(vrOrigin.position, vrAppliedPos);
+            float turned = Quaternion.Angle(vrOrigin.rotation, vrAppliedRot);
+            if (moved < 0.0005f && turned < 0.05f)
+                return;
+
+            vrDriftMove += moved;
+            vrDriftTurn += turned;
+            if (vrDriftMove < 0.03f && vrDriftTurn < 5f)
+                return;
+
+            vrOrigPos = vrOrigin.position;
+            vrOrigRot = vrOrigin.rotation;
+            vrDriftMove = 0f;
+            vrDriftTurn = 0f;
         }
 
         private void RestoreVrRig()

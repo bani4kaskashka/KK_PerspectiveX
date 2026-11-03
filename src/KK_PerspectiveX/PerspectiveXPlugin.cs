@@ -18,7 +18,7 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.4.0";
+        public const string Version = "1.4.1";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }
@@ -198,7 +198,7 @@ namespace PerspectiveX
                 new ConfigDescription("Camera distance in front of the eyes, in meters. Raise it if you can see the inside of the head.", new AcceptableValueRange<float>(0f, 0.2f)));
             UpOffset = Config.Bind("Camera", "Up offset", 0f,
                 new ConfigDescription("Vertical camera offset from the eye line, in meters.", new AcceptableValueRange<float>(-0.1f, 0.1f)));
-            NearClip = Config.Bind("Camera", "Near clip plane", 0.02f,
+            NearClip = Config.Bind("Camera", "Near clip plane", 0.01f,
                 new ConfigDescription("Lower values let very close geometry render without being cut off.", new AcceptableValueRange<float>(0.001f, 0.1f)));
             HideHead = Config.Bind("General", "Hide character head", true,
                 "Hide the POV character's head (incl. hair and head accessories) so nothing clips into the view. Flat screen only, VR has its own switches under VR.");
@@ -350,6 +350,9 @@ namespace PerspectiveX
             // in VR the headset does the looking around, and there's no FOV to zoom
             if (vrPov)
             {
+                // Dragging into another character's head switches to them (was hotkey only)
+                UpdateVrPovSwitch();
+
                 if (!typingInUi && IsShortcutDown(RollResetKey.Value))
                 {
                     // back to the eyes, facing where the character faces, following position only
@@ -825,6 +828,7 @@ namespace PerspectiveX
                 cam = null;
                 vrPov = false;
                 ResetVrFollow();
+                vrEntryLatch = true;   // must leave the head before POV can be entered again
                 dragging = false;
                 panning = false;
                 fpsMode = false;
