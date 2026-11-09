@@ -185,7 +185,7 @@ namespace PerspectiveX
                 // down cycles rotation follow out of the box
                 VrMappedKey def = VrMapNames[i] == "Down" ? VrMappedKey.V : VrMappedKey.None;
                 vrKeyMaps[i] = Config.Bind("VR controller mapping", VrMapNames[i], def,
-                    new ConfigDescription(info[i], null, new ConfigurationManagerAttributes { Order = 9 - i }));
+                    new ConfigDescription(info[i] + " In the main game this only works in H scenes.", null, new ConfigurationManagerAttributes { Order = 9 - i }));
             }
         }
 
