@@ -18,7 +18,7 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.4.1";
+        public const string Version = "1.4.2";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }
@@ -330,10 +330,21 @@ namespace PerspectiveX
             }
 
             // outfits/accessories swapped mid-POV bring in renderers we've never seen
-            if (ShouldHideHead() && Time.time >= nextHeadRescan)
+            if (ShouldHideHead())
             {
-                nextHeadRescan = Time.time + HeadRescanInterval;
-                HideHeadRenderers();
+                if (Time.time >= nextHeadRescan)
+                {
+                    nextHeadRescan = Time.time + HeadRescanInterval;
+                    HideHeadRenderers();
+                }
+            }
+            // Head is supposed to be visible while still in POV (the headset was moved away from
+            // the head). Nothing else re-enables renderers in that state - ApplyHeadHiding only
+            // runs on POV enter / character switch / setting change - so do it here. Guarded by
+            // Count so the steady state costs one int compare per frame.
+            else if (hiddenRenderers.Count > 0)
+            {
+                RestoreHeadRenderers();
             }
 
             if (!typingInUi && IsShortcutDown(CyclePrevKey.Value))
@@ -1127,6 +1138,7 @@ namespace PerspectiveX
             RestoreHeadRenderers();
 
             chara = next;
+            vrHeadShown = false;   // new character, start from the "inside the head" state
             ApplyHeadHiding();
             // when we've taken over free-roam, keep the newly selected body visible too
             // (the built-in view switcher that would normally manage this is suppressed)

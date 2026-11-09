@@ -24,8 +24,17 @@ namespace PerspectiveX
         private const float VrEnterRadius = 0.09f;
         // how long (s) it has to stay there, so passing through a head doesn't grab you
         private const float VrEnterDwell = 0.15f;
+        // how closely (cosine of the angle) the headset has to face the same way as the character
+        // before being inside her head counts as POV entry. 0.6 = within ~53 degrees, the same
+        // threshold KKCharaStudioVR uses in its HasHead test.
+        private const float VrEnterFacing = 0.6f;
         // how far (m) you have to lean or step out of the eyes to leave POV
         private const float VrExitDistance = 0.35f;
+        // how far (m) the headset must be from the head centre before the head
+        // becomes visible again while still in POV. Deliberately much larger than
+        // VrEnterRadius: a small gap would make the head flicker while the rig
+        // follows the character's head animation.
+        private const float VrHeadShowDistance = 0.30f;
 
         private static readonly string[] VrModGuids =
         {
@@ -60,6 +69,10 @@ namespace PerspectiveX
         private bool vrAlignPending;
         private bool vrFollowInit;
         private bool vrLeftHead;
+        // true while the headset sits far enough from the head that the head is shown mid-POV.
+        // Latching this gives the two thresholds hysteresis: show beyond VrHeadShowDistance,
+        // hide again only once you are back inside VrEnterRadius - the same radius POV entry uses.
+        private bool vrHeadShown;
         private Vector3 vrPrevTarget;
         private Vector3 vrHeadStartInRig;
         private Vector3 vrOrigPos;
@@ -105,7 +118,7 @@ namespace PerspectiveX
             VrSupportStudio = Config.Bind("VR", "Use POV in VR (Studio)", true,
                 new ConfigDescription(vrSupportInfo, null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 7 }));
             VrHeadEntry = Config.Bind("VR", "Enter POV by moving into a head", true,
-                new ConfigDescription("Put your head inside a character's head for a moment to become them, lean or step out to leave. No keyboard needed. " +
+                new ConfigDescription("Put your head inside a character's head, facing the way they face, to become them. Lean or step out to leave. No keyboard needed. " +
                     "The POV toggle key still works too.",
                     null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 6 }));
             VrForwardOffset = Config.Bind("VR", "Forward offset", 0.05f,
@@ -194,7 +207,42 @@ namespace PerspectiveX
         {
             if (!vrPov)
                 return HideHead.Value;
-            return isStudio ? HideHeadVrStudio.Value : HideHeadVrMain.Value;
+
+            bool on = isStudio ? HideHeadVrStudio.Value : HideHeadVrMain.Value;
+            if (!on) return false;
+
+            // Dragging the world away from the character keeps POV (and head
+            // tracking) but brings the head back once the headset is clearly
+            // outside it. Same centre point as the POV entry test, so the two
+            // thresholds line up.
+            //
+            // Two thresholds, not one: coming back has to hide at the same radius
+            // POV entry uses (VrEnterRadius), otherwise dragging back in hides the
+            // head while you are still 20 cm away and it looks nothing like the
+            // original entry. Between the two values the current state is kept,
+            // which is also what stops the head flickering as the rig follows the
+            // character's breathing/head animation.
+            //
+            // The facing test is repeated here on purpose. Entry needs distance AND facing,
+            // but this re-hide path used to look at distance only, so after a drag-out the
+            // head came back the moment the sphere was touched again - including when the
+            // character leaned in for a kiss, which is exactly what the facing test exists
+            // to prevent. Staying inside while facing her keeps the head visible instead.
+            if (chara && chara.objHead && chara.objHeadBone && vrHead)
+            {
+                Transform headT = chara.objHeadBone.transform;
+                Vector3 center = GetEyeMidpoint(chara, headT) - headT.forward * 0.06f;
+                float sqr = (center - vrHead.position).sqrMagnitude;
+                if (sqr > VrHeadShowDistance * VrHeadShowDistance)
+                    vrHeadShown = true;
+                else if (sqr < VrEnterRadius * VrEnterRadius
+                         && Vector3.Dot(headT.forward, vrHead.forward) >= VrEnterFacing)
+                    vrHeadShown = false;
+                if (vrHeadShown)
+                    return false;
+            }
+
+            return true;
         }
 
         private bool IsVrModInstalled()
@@ -343,12 +391,25 @@ namespace PerspectiveX
                 ChaControl c = charaList[i];
                 if (!IsValidPovTarget(c) || !c.objHeadBone)
                     continue;
-                // the middle of the head, a bit behind the eyes, so leaning in close to a face
-                // (kissing) doesn't count, only actually being inside the head does
+                // The middle of the head, a bit behind the eyes, so you have to be inside the
+                // head rather than merely near the face. Distance alone was not enough: when the
+                // character leans in (a kiss) her head travels to the headset, so the sphere test
+                // fires without the player moving at all.
                 Transform headT = c.objHeadBone.transform;
                 Vector3 center = GetEyeMidpoint(c, headT) - headT.forward * 0.06f;
-                if ((center - headset).sqrMagnitude < VrEnterRadius * VrEnterRadius)
-                    return c;
+                if ((center - headset).sqrMagnitude >= VrEnterRadius * VrEnterRadius)
+                    continue;
+
+                // So direction is required too: come in from behind, facing the same way she does.
+                // A kiss is face to face (dot ~ -1) and never counts, and neither does standing
+                // over a lying character to look at her face or the back of her head - those are
+                // "look at her", not "become her". The two vectors are the same pair the entry
+                // alignment uses (objHeadBone.forward vs the headset's forward), so anything that
+                // passes here also needs almost no turning to line the view up afterwards.
+                if (Vector3.Dot(headT.forward, vrHead.forward) < VrEnterFacing)
+                    continue;
+
+                return c;
             }
             return null;
         }
@@ -438,6 +499,7 @@ namespace PerspectiveX
             vrOrigRot = vrOrigin.rotation;
             vrFollowInit = false;
             vrLeftHead = false;
+            vrHeadShown = false;
             vrLastFrame = -1;
             vrEnterCandidate = null;
             vrSwitchCandidate = null;
@@ -586,7 +648,8 @@ namespace PerspectiveX
 
             if (!vrFollowInit)
             {
-                // start exactly at the eyes
+                // start exactly at the eyes, which is inside the head again whatever came before
+                vrHeadShown = false;
                 vrOrigin.position += smoothPos - vrHead.position;
                 vrHeadStartInRig = vrOrigin.InverseTransformPoint(vrHead.position);
                 vrFollowInit = true;

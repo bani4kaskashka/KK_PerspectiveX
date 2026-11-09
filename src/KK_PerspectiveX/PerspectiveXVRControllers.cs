@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using BepInEx.Configuration;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PerspectiveX
 {
@@ -122,6 +123,8 @@ namespace PerspectiveX
         private const ulong VrButtonTrigger = 1UL << 33;
         // device 0 is the headset, controllers come after it
         private const uint VrMaxDevices = 16;
+        // the main game's H scene, same name GCSuspend checks for
+        private const string HSceneName = "HProc";
 
         private enum VrPad { None, Up, Down, Left, Right, Center }
 
@@ -182,7 +185,7 @@ namespace PerspectiveX
                 // down cycles rotation follow out of the box
                 VrMappedKey def = VrMapNames[i] == "Down" ? VrMappedKey.V : VrMappedKey.None;
                 vrKeyMaps[i] = Config.Bind("VR controller mapping", VrMapNames[i], def,
-                    new ConfigDescription(info[i], null, new ConfigurationManagerAttributes { Order = 9 - i }));
+                    new ConfigDescription(info[i] + " In the main game this only works in H scenes.", null, new ConfigurationManagerAttributes { Order = 9 - i }));
             }
         }
 
@@ -197,11 +200,43 @@ namespace PerspectiveX
             vrButtonsPrev = vrButtons;
             vrButtons = 0;
             vrPad = VrPad.None;
-            if (IsVrEnabled() && FindVrRig(false) && FindOpenVr())
+            bool vr = IsVrEnabled() && FindVrRig(false) && FindOpenVr();
+            if (vr)
                 ReadVrControllers();
+
+            // The rotation-follow button above keeps working either way (it drives POV state
+            // directly, no key involved). Only the key injection is gated, because that is the
+            // half that can collide with the VR mod's own mapping.
+            //
+            // `vr` first so the scene lookup behind VrKeyMappingActive() doesn't run every frame
+            // in flat-screen play, where the controller mapping cannot do anything anyway.
+            if (!vr || !VrKeyMappingActive())
+            {
+                ReleaseVrMappedKeys();
+                return;
+            }
 
             for (int i = 0; i < vrKeyMaps.Length; i++)
                 SetMappedKey(i, IsVrBindingActive(i) ? vrKeyMaps[i].Value : VrMappedKey.None);
+        }
+
+        // Studio always. In the main game only once the H scene is actually loaded: KK_MainGameVR
+        // maps the controller to keys there too, and two plugins injecting a key for the same
+        // physical button is exactly how one press ends up firing two different keys (its "2"
+        // toggles the game's own look tracking, ours sends Backspace). Same detection GCSuspend
+        // uses - the H scene is the loaded scene named "HProc".
+        private bool VrKeyMappingActive()
+        {
+            if (isStudio)
+                return true;
+            try
+            {
+                return SceneManager.GetSceneByName(HSceneName).isLoaded;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private bool IsVrBindingActive(int i)
