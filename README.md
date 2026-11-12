@@ -47,6 +47,21 @@ Everything is rebindable via ConfigurationManager (F1).
 - **Ctrl+Shift+1/2/3**: save the current view (FOV, look direction, tilt, camera offsets) into a slot. **Ctrl+1/2/3**: recall it. Slots are remembered between game sessions.
 - **Ctrl+P**: open the presets panel. In Studio you can also click the PerspectiveX eye button in the bottom-left toolbar.
 
+- ## VR Controls
+
+- Hold the side button and drag the world behind the character's head to enter first-person (it won't accidentally trigger first-person when kissing the character). You can also press Backspace to enter first-person directly (press left on the controller trackpad or push the joystick left).
+- In first-person, press right on the controller trackpad or push the joystick right to switch to the next character's first-person view (you can change the shortcut in F1; the controller shortcut must be the same as the "Switch POV to next character" shortcut to take effect; default is Numpad 3, and neither Studio nor the main game has any function bound to these two keys). Controller mapping only works in Studio and the main game's Free H. If you use KK_MainGameVR for main-game VR, the controller trackpad mapping under "H Scene Main" should be set to None.
+- In first-person, press down on the controller trackpad or push the joystick down to cycle the first-person head animation tracking mode. If you get dizzy, tracking position only is enough. The modes are:
+- Track position
+- Track position + horizontal rotation
+- Track position + vertical rotation
+- Track position + horizontal rotation + vertical rotation
+- Track position + horizontal rotation + vertical rotation + roll rotation (tilting your head left/right)
+- Head tracking will not conflict with the player's VR camera; the two can exist independently. While first-person is tracking the head animation, you can still drag the world to adjust it to a suitable position. So even if you stay lying down without moving, you can fully experience first-person from any angle.
+- For each character, the world drag position and angle after entering first-person via Backspace are remembered independently. The next time you enter that character's first-person view, it will return to the remembered position, and it will not conflict with the world drag position and angle outside first-person. The memory is cleared when the game restarts.
+- When you drag the world a certain distance away from the head, the head will automatically become visible again; dragging it back will automatically hide it again (you need to enter from behind the head). After dragging the world away from the head, it is not considered exiting first-person; it will continue tracking the character's head animation from a third-person view. At this time you can also continue pressing down on the trackpad or joystick to trigger the head animation tracking mode switch. To exit POV, you need to press left on the controller trackpad or push the joystick left once; only then is it considered a complete exit from POV. This is intentional design to improve immersion.
+- If you are not playing lying down and want moving the headset away from the character's head by a certain distance in the real world to be directly treated as exiting POV, you can change an option in F1; just enable that option.
+
 ### Presets panel
 
 The in-game panel collects everything preset-related in one place, no config diving needed:
