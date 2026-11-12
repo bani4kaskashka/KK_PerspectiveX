@@ -150,7 +150,7 @@ namespace PerspectiveX
             VrSupportStudio = Config.Bind("VR", "Use POV in VR (Studio)", true,
                 new ConfigDescription(vrSupportInfo, null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 7 }));
             VrHeadEntry = Config.Bind("VR", "Enter POV by moving into a head", true,
-                new ConfigDescription("Put your head inside a character's head for a moment to become them, lean or step out to leave. No keyboard needed. " +
+                new ConfigDescription("Put your head inside a character's head, facing the way they face, to become them. Lean or step out to leave. No keyboard needed. " +
                     "The POV toggle key still works too.",
                     null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 6 }));
             VrExitByHeadMove = Config.Bind("VR", "Leave POV by moving your real headset out", true,
@@ -590,7 +590,7 @@ namespace PerspectiveX
         /// </summary>
         private void SaveVrUserOffset()
         {
-            if (!chara || !chara.objHeadBone || !vrHead)
+            if (!vrPov || !chara || !chara.objHeadBone || !vrHead)
                 return;
             try
             {
@@ -876,6 +876,8 @@ namespace PerspectiveX
             if (!vrFollowInit)
             {
                 // start exactly at the eyes (plus the player's adjusted offset when restoring from memory)
+                // inside the head again whatever came before, so it hides even with a forward offset
+                vrHeadShown = false;
                 Vector3 target = smoothPos;
                 if (vrHasPosOffset && chara && chara.objHeadBone)
                     target += chara.objHeadBone.transform.rotation * vrPosOffsetLocal;
