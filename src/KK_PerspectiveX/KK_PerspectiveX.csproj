@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>KK_PerspectiveX</AssemblyName>
+    <RootNamespace>PerspectiveX</RootNamespace>
+    <!-- This Version is what the file properties show (AssemblyVersion / FileVersion / InformationalVersion).
+              The public const string Version in PerspectiveXPlugin is only used for in-game logging, so change both together. -->
+    <Version>1.4.3</Version>
+    <!-- Without a fixed InformationalVersion the SDK appends SourceRevisionId, which shows up as "1.4.3X" in the file properties -->
+    <InformationalVersion>1.4.3</InformationalVersion>
+    <LangVersion>9</LangVersion>
+    <DebugType>none</DebugType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>../../lib/BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>../../lib/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>../../lib/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Assembly-CSharp-firstpass">
+      <HintPath>../../lib/Assembly-CSharp-firstpass.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>../../lib/UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>../../lib/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Emit an identical KKS_-prefixed copy so KK and KKS get separate,
+       clearly-labelled files (Illusion filename convention). The DLL is
+       byte-for-byte the same; BepInEx loads by plugin GUID, not filename. -->
+  <Target Name="EmitKksCopy" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)KK_PerspectiveX.dll"
+          DestinationFiles="$(OutputPath)KKS_PerspectiveX.dll" />
+  </Target>
+
+</Project>
