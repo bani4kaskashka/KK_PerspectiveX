@@ -18,7 +18,7 @@ namespace PerspectiveX
     {
         public const string GUID = "bucky.kk.perspectivex";
         public const string PluginName = "PerspectiveX";
-        public const string Version = "1.4.2";
+        public const string Version = "1.4.3";
 
         private ConfigEntry<KeyboardShortcut> ToggleKey { get; set; }
         private ConfigEntry<KeyboardShortcut> CyclePrevKey { get; set; }
@@ -110,6 +110,10 @@ namespace PerspectiveX
         // renderers we switched to shadows-only to hide the head, with their previous mode
         private readonly Dictionary<Renderer, bool> hiddenRenderers = new Dictionary<Renderer, bool>();
         private readonly List<Renderer> deadRenderers = new List<Renderer>();
+        // Reused buffer for collecting renderers. GetComponentsInChildren<Renderer>(true) used to allocate
+        // a new array, and this collection runs 5~10 times every 0.5 s (HeadRescanInterval) - constant
+        // garbage for the whole POV session. The List overload allocates nothing; scan rate and contents are unchanged.
+        private readonly List<Renderer> scratchRenderers = new List<Renderer>();
         private float nextHeadRescan;
         private bool hiddenHeadNoticeShown;
 
@@ -248,7 +252,11 @@ namespace PerspectiveX
                 hFlag = FindObjectOfType<HFlag>();
                 charaList = null;
             };
-            SceneManager.sceneUnloaded += scene => charaList = null;
+            SceneManager.sceneUnloaded += scene =>
+            {
+                charaList = null;
+                ClearAllVrUserOffsets();   // character references die with the scene, drop the memory too
+            };
 
             Camera.onPreCull += OnCameraPreCull;
         }
@@ -372,6 +380,9 @@ namespace PerspectiveX
                         ResetVrFollow();
                         Logger.LogMessage("VR rotation follow: position only");
                     }
+                    // the roll-reset key also clears this character's remembered pose, back to exactly at the eyes facing her
+                    ClearVrUserOffset();
+                    vrAlignFromMemory = false;
                     vrAlignPending = true;
                 }
                 if (!typingInUi && (IsShortcutDown(VrFollowCycleKey.Value) || VrFollowButtonPressed()))
@@ -715,6 +726,9 @@ namespace PerspectiveX
         {
             ChaControl target = vrEntryTarget;
             vrEntryTarget = null;
+            // vrEntryTarget is only set by the "put your head inside a head" path; it is null for hotkey entry.
+            // Memory only serves hotkey entry, so decide before FindPovCharacter fills in target.
+            bool byKey = !target;
 
             bool vr = IsVrEnabled() && FindVrRig(true);
             if (vr && IsVrModPovActive())
@@ -746,6 +760,9 @@ namespace PerspectiveX
 
             if (vr)
             {
+                // Only hotkey entry restores this character's remembered pose;
+                // walking in by head, or another plugin calling in, aligns strictly to her face.
+                vrAlignFromMemory = byKey;
                 // the headset drives the view, so none of the flat-screen camera takeover below applies
                 BeginVrPov();
             }
@@ -806,6 +823,10 @@ namespace PerspectiveX
             // desktop-wide cursor lock the user can only escape by killing the game.
             try
             {
+                // Snapshot at the moment of leaving, so only drags made during POV are remembered;
+                // dragging around afterwards in normal view never touches the memory.
+                SaveVrUserOffset();
+
                 RestoreHeadRenderers();
                 chara = null;
 
@@ -1135,9 +1156,14 @@ namespace PerspectiveX
 
         private void SwitchTo(ChaControl next)
         {
+            // Must save before chara changes - the offset is measured against the OLD character's head
+            SaveVrUserOffset();
+
             RestoreHeadRenderers();
 
             chara = next;
+            // The new character ignores the memory and aligns to her face; it is recorded on exit or switch
+            vrAlignFromMemory = false;
             vrHeadShown = false;   // new character, start from the "inside the head" state
             ApplyHeadHiding();
             // when we've taken over free-roam, keep the newly selected body visible too
@@ -1217,10 +1243,12 @@ namespace PerspectiveX
         {
             if (!root)
                 return;
-            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
-            for (int i = 0; i < renderers.Length; i++)
+            // Reuse a List instead of allocating a Renderer[] every call (this runs several times per 0.5 s)
+            scratchRenderers.Clear();
+            root.GetComponentsInChildren<Renderer>(true, scratchRenderers);
+            for (int i = 0; i < scratchRenderers.Count; i++)
             {
-                Renderer r = renderers[i];
+                Renderer r = scratchRenderers[i];
                 if (!r)
                     continue;
                 if (!hiddenRenderers.ContainsKey(r))

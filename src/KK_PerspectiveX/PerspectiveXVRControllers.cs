@@ -182,8 +182,11 @@ namespace PerspectiveX
             vrKeyMaps = new ConfigEntry<VrMappedKey>[VrMapNames.Length];
             for (int i = 0; i < VrMapNames.Length; i++)
             {
-                // down cycles rotation follow out of the box
-                VrMappedKey def = VrMapNames[i] == "Down" ? VrMappedKey.V : VrMappedKey.None;
+                // out of the box: touchpad down cycles rotation follow (Insert = its default hotkey),
+                // touchpad left presses Backspace (= the default POV toggle key)
+                VrMappedKey def = VrMapNames[i] == "Down" ? VrMappedKey.Insert
+                    : VrMapNames[i] == "Left" ? VrMappedKey.Back
+                    : VrMappedKey.None;
                 vrKeyMaps[i] = Config.Bind("VR controller mapping", VrMapNames[i], def,
                     new ConfigDescription(info[i] + " In the main game this only works in H scenes.", null, new ConfigurationManagerAttributes { Order = 9 - i }));
             }

@@ -45,6 +45,7 @@ namespace PerspectiveX
         private ConfigEntry<bool> VrSupportMain { get; set; }
         private ConfigEntry<bool> VrSupportStudio { get; set; }
         private ConfigEntry<bool> VrHeadEntry { get; set; }
+        private ConfigEntry<bool> VrExitByHeadMove { get; set; }
         // VR gets its own camera placement, a headset sits and feels different from a flat camera
         private ConfigEntry<float> VrForwardOffset { get; set; }
         private ConfigEntry<float> VrUpOffset { get; set; }
@@ -56,6 +57,7 @@ namespace PerspectiveX
         private readonly List<Type> vrginTypes = new List<Type>();
         private Type officialVrRigType;
         private PropertyInfo vrModPovActive;
+        private Func<bool> vrModPovActiveGetter;
         private bool vrDetectionHooked;
         private GUIStyle vrWarnStyle;
 
@@ -77,6 +79,16 @@ namespace PerspectiveX
         private Vector3 vrHeadStartInRig;
         private Vector3 vrOrigPos;
         private Quaternion vrOrigRot;
+        // Rig pose at the moment POV was entered. Same value as vrOrigPos, but never rewritten by dragging.
+        // Used to restore the exit position when you drag the world while still inside her head (<30 cm).
+        private Vector3 vrEntryPos;
+        private Quaternion vrEntryRot = Quaternion.identity;
+        // [2026-11-12] Her head rotation at the moment of alignment. Memory is saved against this
+        // reference frame instead of re-reading her head rotation on exit: character animation keeps
+        // changing it, so solving against the exit-time value folds "how far her head turned meanwhile"
+        // into the player's adjustment every cycle, which accumulates into a view that rolls about itself.
+        private Quaternion vrAlignHeadRot = Quaternion.identity;
+        private bool vrAlignHeadRotValid;
         private int vrLastFrame = -1;
 
         // Rig position/rotation we wrote last frame; used to detect the VR mod moving the
@@ -97,6 +109,26 @@ namespace PerspectiveX
         private ChaControl vrEnterCandidate;
         private float vrEnterSince;
         private float nextVrCharaScan;
+
+        // ---- POV pose the player adjusted by hand, remembered per character ----
+        // Read only on hotkey entry; written only when leaving POV or switching character, so drags
+        // made after leaving are never recorded. Stored relative to her head rather than in world
+        // space, so the offset follows her when she changes pose, turns or walks.
+        private class VrUserOffset
+        {
+            public Quaternion rot;
+            public Vector3 pos;
+        }
+
+        private readonly Dictionary<ChaControl, VrUserOffset> vrUserOffsets =
+            new Dictionary<ChaControl, VrUserOffset>();
+        private readonly List<ChaControl> deadOffsetKeys = new List<ChaControl>();
+
+        // Whether this alignment should read the memory (set by EnablePov per entry type, consumed once)
+        private bool vrAlignFromMemory;
+        // Headset offset from her head during this POV session, in her head's frame; zero when unused
+        private bool vrHasPosOffset;
+        private Vector3 vrPosOffsetLocal;
 
         // Rotation follow (by HanYuanyi): besides position, the rig can also turn with the character's
         // head. 0 = position only, 1 = + yaw, 2 = + pitch, 3 = + yaw and pitch, 4 = + roll as well.
@@ -121,22 +153,25 @@ namespace PerspectiveX
                 new ConfigDescription("Put your head inside a character's head, facing the way they face, to become them. Lean or step out to leave. No keyboard needed. " +
                     "The POV toggle key still works too.",
                     null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 6 }));
-            VrForwardOffset = Config.Bind("VR", "Forward offset", 0.05f,
+            VrExitByHeadMove = Config.Bind("VR", "Leave POV by moving your real headset out", true,
+                new ConfigDescription("VR only. Move your real headset out of the character's head to leave POV.",
+                    null, new ConfigurationManagerAttributes { CustomDrawer = DrawVrToggle, Order = 5 }));
+            VrForwardOffset = Config.Bind("VR", "Forward offset", 0f,
                 new ConfigDescription("VR only. Headset distance in front of the eyes, in meters. Negative moves you back into the head. The flat-screen offset is under Camera.",
-                    new AcceptableValueRange<float>(-0.1f, 0.2f), new ConfigurationManagerAttributes { Order = 5 }));
+                    new AcceptableValueRange<float>(-0.1f, 0.2f), new ConfigurationManagerAttributes { Order = 4 }));
             VrUpOffset = Config.Bind("VR", "Up offset", 0f,
                 new ConfigDescription("VR only. Headset height above the eye line, in meters. The flat-screen offset is under Camera.",
-                    new AcceptableValueRange<float>(-0.1f, 0.1f), new ConfigurationManagerAttributes { Order = 4 }));
-            VrNearClip = Config.Bind("VR", "Near clip plane", 0.01f,
+                    new AcceptableValueRange<float>(-0.1f, 0.1f), new ConfigurationManagerAttributes { Order = 3 }));
+            VrNearClip = Config.Bind("VR", "Near clip plane", 0f,
                 new ConfigDescription("VR only. Lower values let very close geometry render without being cut off. 0 = leave the VR mod's own setting alone.",
-                    new AcceptableValueRange<float>(0f, 0.1f), new ConfigurationManagerAttributes { Order = 3 }));
+                    new AcceptableValueRange<float>(0f, 0.1f), new ConfigurationManagerAttributes { Order = 2 }));
             HideHeadVrMain = Config.Bind("VR", "Hide character head (main game)", true,
                 new ConfigDescription("Main game VR only. On by default because the main game VR mod doesn't hide the head itself.",
-                    null, new ConfigurationManagerAttributes { Order = 2 }));
-            HideHeadVrStudio = Config.Bind("VR", "Hide character head (Studio)", false,
-                new ConfigDescription("Studio VR only. Off by default because KKCharaStudioVR hides the head itself, and both doing it can clash.",
                     null, new ConfigurationManagerAttributes { Order = 1 }));
-            VrFollowCycleKey = Config.Bind("Keyboard shortcuts", "VR rotation follow", new KeyboardShortcut(KeyCode.V),
+            HideHeadVrStudio = Config.Bind("VR", "Hide character head (Studio)", true,
+                new ConfigDescription("Studio VR only. On by default. Turn it off if the Studio VR mod already hides the head and the two clash.",
+                    null, new ConfigurationManagerAttributes { Order = 0 }));
+            VrFollowCycleKey = Config.Bind("Keyboard shortcuts", "VR rotation follow", new KeyboardShortcut(KeyCode.Insert),
                 "VR only. Cycles what the headset follows besides the eyes' position: position only > + yaw > + pitch > + yaw and pitch > + yaw, pitch and roll > position only. " +
                 "Can also be put on a controller button under VR controller mapping.");
             BindVrControllerSettings();
@@ -188,7 +223,14 @@ namespace PerspectiveX
                     // KK_MainGameVR / KKS_VR's own H-scene POV, see IsVrModPovActive
                     Type pov = asm.GetType("KK_VR.Features.PoV", false);
                     if (pov != null)
+                    {
                         vrModPovActive = pov.GetProperty("Active", BindingFlags.Public | BindingFlags.Static);
+                        // [2026-11-12 perf] IsVrModPovActive is asked every frame. PropertyInfo.GetValue boxes the
+                        // returned bool into a new object on every call (24 bytes/frame, ~2 KB/s at 90 fps), so compile
+                        // it into a delegate once instead: the per-frame cost becomes a plain call with no allocation.
+                        // If the delegate cannot be built we fall back to reflection; behaviour is identical.
+                        vrModPovActiveGetter = MakeBoolGetter(vrModPovActive);
+                    }
                 }
             }
             catch (Exception)
@@ -228,7 +270,18 @@ namespace PerspectiveX
             // head came back the moment the sphere was touched again - including when the
             // character leaned in for a kiss, which is exactly what the facing test exists
             // to prevent. Staying inside while facing her keeps the head visible instead.
-            if (chara && chara.objHead && chara.objHeadBone && vrHead)
+            //
+            // [2026-11-11] Two fixes:
+            // 1) The vrFollowInit guard. It means "the rig has been placed at her eyes at least once"; it is
+            //    false only for the frame or two right after entering or aligning, when the player is still
+            //    outside her head, so the distance test always latches vrHeadShown to 1 - a false positive.
+            //    Skipping it hides the head on the first frame, matching flat mode, which returns HideHead.Value and does none of these checks.
+            // 2) The facing test compares horizontal direction only. It used a full 3D dot product, and in VR
+            //    the view pitch is inherited from dragging the world. Measured in CharaStudio: yaw was already
+            //    aligned (1.3 degrees off) but at 53.2 degrees of pitch dot was 0.596, 0.004 short of 0.6, so
+            //    vrHeadShown never unlocked and the head stayed visible; tilting down to 43.6 degrees gave
+            //    0.723 and unlocked it. With the horizontal projection pitch no longer matters, while a face-to-face kiss still points the opposite way (dot ~ -1), so the original intent is kept.
+            if (vrFollowInit && chara && chara.objHead && chara.objHeadBone && vrHead)
             {
                 Transform headT = chara.objHeadBone.transform;
                 Vector3 center = GetEyeMidpoint(chara, headT) - headT.forward * 0.06f;
@@ -236,13 +289,27 @@ namespace PerspectiveX
                 if (sqr > VrHeadShowDistance * VrHeadShowDistance)
                     vrHeadShown = true;
                 else if (sqr < VrEnterRadius * VrEnterRadius
-                         && Vector3.Dot(headT.forward, vrHead.forward) >= VrEnterFacing)
+                         && FacesSameWay(headT.forward, vrHead.forward))
                     vrHeadShown = false;
                 if (vrHeadShown)
                     return false;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Facing test: compares horizontal (yaw) direction only, ignoring pitch and roll.
+        /// See the comment in ShouldHideHead - a full 3D dot product pushes the threshold to 53 degrees, so the head never hides at large pitch.
+        /// The projection degenerates when the view is nearly straight up/down; no facing limit is applied then, or it would get stuck at random.
+        /// </summary>
+        private static bool FacesSameWay(Vector3 a, Vector3 b)
+        {
+            a.y = 0f;
+            b.y = 0f;
+            if (a.sqrMagnitude < 0.0001f || b.sqrMagnitude < 0.0001f)
+                return true;
+            return Vector3.Dot(a.normalized, b.normalized) >= VrEnterFacing;
         }
 
         private bool IsVrModInstalled()
@@ -372,11 +439,35 @@ namespace PerspectiveX
         {
             try
             {
+                // Use the cached delegate to avoid per-frame reflection and boxing; fall back only if it failed
+                Func<bool> getter = vrModPovActiveGetter;
+                if (getter != null)
+                    return getter();
                 return vrModPovActive != null && (bool)vrModPovActive.GetValue(null, null);
             }
             catch (Exception)
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Compile a static bool property getter into a delegate. Returns null on failure (caller falls back to reflection).
+        /// </summary>
+        private static Func<bool> MakeBoolGetter(PropertyInfo prop)
+        {
+            if (prop == null)
+                return null;
+            try
+            {
+                MethodInfo getter = prop.GetGetMethod();
+                if (getter == null || getter.ReturnType != typeof(bool) || getter.GetParameters().Length != 0)
+                    return null;
+                return (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), getter);
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -492,11 +583,96 @@ namespace PerspectiveX
             }
         }
 
+        /// <summary>
+        /// Store the current headset pose relative to her head as this character's memory.
+        /// Called only when leaving POV or switching character, so it covers only drags made during POV;
+        /// dragging afterwards in normal view never touches it.
+        /// </summary>
+        private void SaveVrUserOffset()
+        {
+            if (!vrPov || !chara || !chara.objHeadBone || !vrHead)
+                return;
+            try
+            {
+                Transform headBone = chara.objHeadBone.transform;
+
+                // Only save while not yet in observation mode: use VrHeadShowDistance (30 cm) rather than
+                // VrEnterRadius (9 cm). Reason: center is 6 cm back from the eyes, so standing at the eyes is
+                // already 6 cm away; with 9 cm the usable budget is only 3 cm and the memory is effectively dead.
+                // 30 cm lines up with "the head starts showing": beyond it you are outside observing and should not be recorded.
+                Vector3 center = GetEyeMidpoint(chara, headBone) - headBone.forward * 0.06f;
+                if ((center - vrHead.position).sqrMagnitude >= VrHeadShowDistance * VrHeadShowDistance)
+                    return;
+
+                PruneVrUserOffsets();
+
+                // Use the head rotation captured at alignment (vrAlignHeadRot) as the reference frame, never the
+                // current headBone.rotation - the animation never stops, and solving against the current value
+                // folds that animation into the player's adjustment, accumulating into a rolling view on repeated entry (worst at one press every 0.5 s).
+                Quaternion refRot = vrAlignHeadRotValid ? vrAlignHeadRot : headBone.rotation;
+                Quaternion inv = Quaternion.Inverse(refRot);
+                VrUserOffset o;
+                if (!vrUserOffsets.TryGetValue(chara, out o))
+                {
+                    o = new VrUserOffset();
+                    vrUserOffsets[chara] = o;
+                }
+                o.rot = inv * vrHead.rotation;
+
+                // [2026-11-12 drift fix] The reference point must be the one used when restoring.
+                // PlaceVrRig restores with `target = smoothPos + headRot * pos`, whose origin is smoothPos (the
+                // eye midpoint); this used to subtract headBone.position (the head bone origin), about
+                // (0, +7 cm up, +8 cm forward) apart. Every POV entry therefore added that gap again: the camera
+                // crept upward until it crossed VrHeadShowDistance (30 cm), where the guard above stopped saving
+                // and the head came back because the distance was over 30 cm.
+                // Subtracting smoothPos instead: with no dragging pos is ~0, so any number of entries stays put.
+                o.pos = inv * (vrHead.position - smoothPos);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        /// <summary>Clear the current character's memory (used by the roll-reset key) and go back to exactly at the eyes.</summary>
+        private void ClearVrUserOffset()
+        {
+            if (chara)
+                vrUserOffsets.Remove(chara);
+            vrHasPosOffset = false;
+        }
+
+        /// <summary>Cleared on scene unload (the character references die with it).</summary>
+        private void ClearAllVrUserOffsets()
+        {
+            vrUserOffsets.Clear();
+            vrHasPosOffset = false;
+        }
+
+        // Destroyed characters leave dead keys behind, so sweep them out while saving
+        private void PruneVrUserOffsets()
+        {
+            if (vrUserOffsets.Count == 0)
+                return;
+            deadOffsetKeys.Clear();
+            foreach (ChaControl c in vrUserOffsets.Keys)
+            {
+                if (!c)
+                    deadOffsetKeys.Add(c);
+            }
+            for (int i = 0; i < deadOffsetKeys.Count; i++)
+                vrUserOffsets.Remove(deadOffsetKeys[i]);
+            deadOffsetKeys.Clear();
+        }
+
         private void BeginVrPov()
         {
             // remember where the rig was so leaving POV with the toggle key puts you back there
             vrOrigPos = vrOrigin.position;
             vrOrigRot = vrOrigin.rotation;
+            // This is the origin pose; dragging inside 30 cm never rewrites it
+            vrEntryPos = vrOrigPos;
+            vrEntryRot = vrOrigRot;
+            vrAlignHeadRotValid = false;
             vrFollowInit = false;
             vrLeftHead = false;
             vrHeadShown = false;
@@ -628,15 +804,66 @@ namespace PerspectiveX
 
             if (vrAlignPending)
             {
-                // turn the rig around the headset so you face where the character's head faces
-                Vector3 charaFwd = chara.objHeadBone.transform.forward;
-                Vector3 headFwd = vrHead.forward;
-                if (Mathf.Abs(charaFwd.y) < 0.99f && Mathf.Abs(headFwd.y) < 0.99f)
+                // Look exactly where the character's head looks.
+                //
+                // [2026-11-11] This used to do yaw only (`RotateAround(up, delta)`), dropping pitch, so the tilt
+                // produced by dragging the world was inherited into POV: the view no longer matched her face and
+                // had to be straightened by hand, and ShouldHideHead's facing test failed because of it, leaving
+                // the head visible (measured: stuck at dot 0.596, unlocked only at 0.723 after tilting to 43.6 degrees).
+                //
+                // Now it is full 3D: the target view is defined by her head's forward, so however you dragged the
+                // world beforehand it makes no difference - delta is computed from the current view and closes
+                // the gap in one go. Roll follows her too; entry alignment is a one-off snapshot, and continuous roll tracking is follow mode's job.
+                Transform headBone = chara && chara.objHeadBone ? chara.objHeadBone.transform : null;
+
+                // Target pose: prefer the pose the player adjusted, from this character's memory (read on hotkey
+                // entry only), otherwise align strictly to her face. The memory also carries a position offset to restore the adjusted distance.
+                Quaternion targetView = Quaternion.identity;
+                bool haveTarget = false;
+                vrHasPosOffset = false;
+
+                VrUserOffset mem = null;
+                if (vrAlignFromMemory && chara)
+                    vrUserOffsets.TryGetValue(chara, out mem);
+
+                if (mem != null && headBone)
                 {
-                    float delta = Mathf.DeltaAngle(Mathf.Atan2(headFwd.x, headFwd.z) * Mathf.Rad2Deg,
-                        Mathf.Atan2(charaFwd.x, charaFwd.z) * Mathf.Rad2Deg);
-                    vrOrigin.RotateAround(vrHead.position, Vector3.up, delta);
+                    targetView = headBone.rotation * mem.rot;
+                    vrPosOffsetLocal = mem.pos;
+                    vrHasPosOffset = true;
+                    haveTarget = true;
                 }
+                else if (headBone)
+                {
+                    Vector3 charaFwd = headBone.forward;
+                    if (charaFwd.sqrMagnitude > 0.0001f)
+                    {
+                        charaFwd.Normalize();
+                        // LookRotation's up reference degenerates when she faces almost straight up/down, fall back to world up
+                        Vector3 upRef = Mathf.Abs(Vector3.Dot(charaFwd, Vector3.up)) > 0.99f
+                            ? Vector3.up
+                            : headBone.up;
+                        targetView = Quaternion.LookRotation(charaFwd, upRef);
+                        haveTarget = true;
+                    }
+                }
+
+                if (haveTarget)
+                {
+                    // The reference frame is fixed here: memory is solved against it so her head animation is not mistaken for an adjustment
+                    vrAlignHeadRot = headBone.rotation;
+                    vrAlignHeadRotValid = true;
+
+                    Quaternion delta = targetView * Quaternion.Inverse(vrHead.rotation);
+                    if (Quaternion.Angle(delta, Quaternion.identity) > 0.01f)
+                    {
+                        // Rotate about the headset position so the headset itself does not move
+                        Vector3 headPos = vrHead.position;
+                        vrOrigin.rotation = delta * vrOrigin.rotation;
+                        vrOrigin.position = headPos + delta * (vrOrigin.position - headPos);
+                    }
+                }
+                vrAlignFromMemory = false;
                 vrAlignPending = false;
                 vrFollowInit = false;
                 // turning the head from here on is measured from the newly faced direction
@@ -648,9 +875,13 @@ namespace PerspectiveX
 
             if (!vrFollowInit)
             {
-                // start exactly at the eyes, which is inside the head again whatever came before
+                // start exactly at the eyes (plus the player's adjusted offset when restoring from memory)
+                // inside the head again whatever came before, so it hides even with a forward offset
                 vrHeadShown = false;
-                vrOrigin.position += smoothPos - vrHead.position;
+                Vector3 target = smoothPos;
+                if (vrHasPosOffset && chara && chara.objHeadBone)
+                    target += chara.objHeadBone.transform.rotation * vrPosOffsetLocal;
+                vrOrigin.position += target - vrHead.position;
                 vrHeadStartInRig = vrOrigin.InverseTransformPoint(vrHead.position);
                 vrFollowInit = true;
             }
@@ -665,9 +896,13 @@ namespace PerspectiveX
                 // Leaving POV is about your real head only: how far it has moved inside the play
                 // space since POV started. Rig moves from the VR mod's controls (moving, turning)
                 // are left out, so fixing up the view with the controller doesn't kick you out.
-                Vector3 leaned = vrOrigin.TransformVector(vrOrigin.InverseTransformPoint(vrHead.position) - vrHeadStartInRig);
-                if (leaned.sqrMagnitude > VrExitDistance * VrExitDistance)
-                    vrLeftHead = true;
+                // Can be disabled with F1's "Leave POV by moving your real headset out", leaving only the POV key to exit.
+                if (VrExitByHeadMove.Value)
+                {
+                    Vector3 leaned = vrOrigin.TransformVector(vrOrigin.InverseTransformPoint(vrHead.position) - vrHeadStartInRig);
+                    if (leaned.sqrMagnitude > VrExitDistance * VrExitDistance)
+                        vrLeftHead = true;
+                }
             }
             vrPrevTarget = smoothPos;
             if (VrNearClip.Value > 0f)
@@ -683,6 +918,11 @@ namespace PerspectiveX
         // The VR mod's world grab / locomotion / turning moves the rig directly, bypassing us.
         // Once the player has moved it that way, leaving POV should return to where they moved
         // to, not to where they were before entering.
+        //
+        // [2026-11-12] Adjusting while still inside her head does not count as leaving: while the headset is
+        // within VrHeadShowDistance (30 cm) dragging only changes the view and must not move the exit spot -
+        // leaving should return to where you entered. Only once the headset is dragged past 30 cm (observation
+        // mode, her head shown again) does the current position become the exit spot; drag out and back in and it reverts to the entry pose.
         private void DetectExternalRigMove()
         {
             if (!vrAppliedValid || !vrOrigin)
@@ -698,10 +938,33 @@ namespace PerspectiveX
             if (vrDriftMove < 0.03f && vrDriftTurn < 5f)
                 return;
 
-            vrOrigPos = vrOrigin.position;
-            vrOrigRot = vrOrigin.rotation;
             vrDriftMove = 0f;
             vrDriftTurn = 0f;
+
+            if (!HeadsetLeftHead())
+            {
+                // still inside her head -> keep the pre-entry exit position
+                vrOrigPos = vrEntryPos;
+                vrOrigRot = vrEntryRot;
+                return;
+            }
+
+            vrOrigPos = vrOrigin.position;
+            vrOrigRot = vrOrigin.rotation;
+        }
+
+        /// <summary>
+        /// Whether the headset has left her head (beyond VrHeadShowDistance). With no character available it reports "still inside",
+        /// so the exit position stays where it is.
+        /// </summary>
+        private bool HeadsetLeftHead()
+        {
+            if (!chara || !chara.objHeadBone || !vrHead)
+                return false;
+            Transform headT = chara.objHeadBone.transform;
+            Vector3 center = GetEyeMidpoint(chara, headT) - headT.forward * 0.06f;
+            return (center - vrHead.position).sqrMagnitude
+                   >= VrHeadShowDistance * VrHeadShowDistance;
         }
 
         private void RestoreVrRig()

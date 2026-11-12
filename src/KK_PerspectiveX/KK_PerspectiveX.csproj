@@ -4,7 +4,11 @@
     <TargetFramework>net35</TargetFramework>
     <AssemblyName>KK_PerspectiveX</AssemblyName>
     <RootNamespace>PerspectiveX</RootNamespace>
-    <Version>1.4.2</Version>
+    <!-- This Version is what the file properties show (AssemblyVersion / FileVersion / InformationalVersion).
+              The public const string Version in PerspectiveXPlugin is only used for in-game logging, so change both together. -->
+    <Version>1.4.3</Version>
+    <!-- Without a fixed InformationalVersion the SDK appends SourceRevisionId, which shows up as "1.4.3X" in the file properties -->
+    <InformationalVersion>1.4.3</InformationalVersion>
     <LangVersion>9</LangVersion>
     <DebugType>none</DebugType>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
